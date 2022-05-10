@@ -79,6 +79,16 @@ func (c *GjsonMetric) GetFloat(key string, nullable bool) (val interface{}) {
 	return
 }
 
+func (c *GjsonMetric) GetBool(key string, nullable bool) (val interface{}) {
+	r := gjson.Get(c.raw, key)
+	if !gjCompatibleBool(r) {
+		val = getDefaultBool(nullable)
+		return
+	}
+	val = (r.Type == gjson.True)
+	return
+}
+
 func (c *GjsonMetric) GetInt(key string, nullable bool) (val interface{}) {
 	r := gjson.Get(c.raw, key)
 	if !gjCompatibleInt(r) {
@@ -138,6 +148,13 @@ func (c *GjsonMetric) GetArray(key string, typ int) (val interface{}) {
 	}
 	array := r.Array()
 	switch typ {
+	case model.Bool:
+		results := make([]bool, 0, len(array))
+		for _, e := range array {
+			v := (e.Exists() && e.Type == gjson.True)
+			results = append(results, v)
+		}
+		val = results
 	case model.Int:
 		results := make([]int64, 0, len(array))
 		for _, e := range array {
@@ -229,16 +246,24 @@ func (c *GjsonMetric) GetNewKeys(knownKeys, newKeys *sync.Map, white, black *reg
 	return
 }
 
+func gjCompatibleBool(r gjson.Result) (ok bool) {
+	if !r.Exists() {
+		return
+	}
+	switch r.Type {
+	case gjson.True, gjson.False:
+		ok = true
+	default:
+	}
+	return
+}
+
 func gjCompatibleInt(r gjson.Result) (ok bool) {
 	if !r.Exists() {
 		return
 	}
 	switch r.Type {
-	case gjson.True:
-		ok = true
-	case gjson.False:
-		ok = true
-	case gjson.Number:
+	case gjson.True, gjson.False, gjson.Number:
 		ok = true
 	default:
 	}
@@ -262,9 +287,7 @@ func gjCompatibleDateTime(r gjson.Result) (ok bool) {
 		return
 	}
 	switch r.Type {
-	case gjson.Number:
-		ok = true
-	case gjson.String:
+	case gjson.Number, gjson.String:
 		ok = true
 	default:
 	}
@@ -275,7 +298,7 @@ func gjDetectType(v gjson.Result) (typ int) {
 	typ = model.Unknown
 	switch v.Type {
 	case gjson.True, gjson.False:
-		typ = model.Int
+		typ = model.Bool
 	case gjson.Number:
 		typ = model.Float
 		if float64(v.Int()) == v.Num {
@@ -293,7 +316,7 @@ func gjDetectType(v gjson.Result) (typ int) {
 			if array := v.Array(); len(array) != 0 {
 				switch array[0].Type {
 				case gjson.True, gjson.False:
-					typ = model.IntArray
+					typ = model.BoolArray
 				case gjson.Number:
 					typ = model.FloatArray
 					if float64(array[0].Int()) == array[0].Num {

@@ -84,6 +84,16 @@ func (c *FastjsonMetric) GetFloat(key string, nullable bool) (val interface{}) {
 	return
 }
 
+func (c *FastjsonMetric) GetBool(key string, nullable bool) (val interface{}) {
+	v := c.value.Get(key)
+	if !fjCompatibleBool(v) {
+		val = getDefaultBool(nullable)
+		return
+	}
+	val = (v.Type() == fastjson.TypeTrue)
+	return
+}
+
 func (c *FastjsonMetric) GetInt(key string, nullable bool) (val interface{}) {
 	v := c.value.Get(key)
 	if !fjCompatibleInt(v) {
@@ -151,6 +161,11 @@ func (c *FastjsonMetric) GetArray(key string, typ int) (val interface{}) {
 	}
 	array, _ := v.Array()
 	switch typ {
+	case model.Bool:
+		for _, e := range array {
+			v := (e != nil && e.Type() == fastjson.TypeTrue)
+			val = append(val.([]bool), v)
+		}
 	case model.Int:
 		for _, e := range array {
 			var v int64
@@ -236,16 +251,23 @@ func (c *FastjsonMetric) GetNewKeys(knownKeys, newKeys *sync.Map, white, black *
 	return
 }
 
+func fjCompatibleBool(v *fastjson.Value) (ok bool) {
+	if v == nil {
+		return
+	}
+	switch v.Type() {
+	case fastjson.TypeTrue, fastjson.TypeFalse:
+		ok = true
+	}
+	return
+}
+
 func fjCompatibleInt(v *fastjson.Value) (ok bool) {
 	if v == nil {
 		return
 	}
 	switch v.Type() {
-	case fastjson.TypeTrue:
-		ok = true
-	case fastjson.TypeFalse:
-		ok = true
-	case fastjson.TypeNumber:
+	case fastjson.TypeTrue, fastjson.TypeFalse, fastjson.TypeNumber:
 		ok = true
 	}
 	return
@@ -267,11 +289,17 @@ func fjCompatibleDateTime(v *fastjson.Value) (ok bool) {
 		return
 	}
 	switch v.Type() {
-	case fastjson.TypeNumber:
-		ok = true
-	case fastjson.TypeString:
+	case fastjson.TypeNumber, fastjson.TypeString:
 		ok = true
 	}
+	return
+}
+
+func getDefaultBool(nullable bool) (val interface{}) {
+	if nullable {
+		return
+	}
+	val = false
 	return
 }
 
@@ -303,10 +331,8 @@ func fjDetectType(v *fastjson.Value) (typ int) {
 	switch v.Type() {
 	case fastjson.TypeNull:
 		typ = model.Unknown
-	case fastjson.TypeTrue:
-		typ = model.Int
-	case fastjson.TypeFalse:
-		typ = model.Int
+	case fastjson.TypeTrue, fastjson.TypeFalse:
+		typ = model.Bool
 	case fastjson.TypeNumber:
 		typ = model.Float
 		if _, err := v.Int64(); err == nil {
@@ -323,6 +349,8 @@ func fjDetectType(v *fastjson.Value) (typ int) {
 		if arr, err := v.Array(); err == nil && len(arr) > 0 {
 			typ2 := fjDetectType(arr[0])
 			switch typ2 {
+			case model.Bool:
+				typ = model.BoolArray
 			case model.Int:
 				typ = model.IntArray
 			case model.Float:
